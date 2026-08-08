@@ -68,10 +68,18 @@ async def tts_synthesize(
 ):
     """Proxy a TTS request to ElevenLabs. Per-user rate limited."""
     api_key = os.getenv('ELEVENLABS_API_KEY')
-    if not api_key:
-        logger.error("tts_synthesize: ELEVENLABS_API_KEY not configured")
-        raise HTTPException(status_code=503, detail="TTS service not configured")
+    if not api_key or req.voice_id.startswith("en-") or req.voice_id.startswith("edge-"):
+        # Edge Neural TTS Female Voice fallback / primary provider (Default: en-US-AvaNeural)
+        voice = req.voice_id if req.voice_id.startswith("en-") else "en-US-AvaNeural"
+        import edge_tts
 
+        async def edge_audio_stream():
+            communicate = edge_tts.Communicate(text, voice)
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    yield chunk["data"]
+
+        return StreamingResponse(edge_audio_stream(), media_type="audio/mpeg")
     if not _is_valid_voice_id(req.voice_id):
         raise HTTPException(status_code=400, detail="invalid voice_id")
 
